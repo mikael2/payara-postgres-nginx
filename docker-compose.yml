@@ -1,0 +1,78 @@
+version: '2'
+
+volumes:
+    postgres-data:
+        driver: local
+        driver_opts:
+            type: none
+            device: $PWD/${POSTGRES_DATA_PATH}
+            o: bind
+    nginx-letsencrypt:
+        driver: local
+        driver_opts:
+            type: none
+            device: $PWD/${LE_DATA_PATH}
+            o: bind
+
+services:
+  postgres:
+    container_name: postgres
+    image: "postgres:${POSTGRES_VERSION}"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "3"
+    restart: unless-stopped
+
+  appserver:
+    container_name: appserver
+    image: "tollefsen/payara"
+    volumes:
+      - ./deployments:/opt/payara/deployments
+    depends_on:
+      - postgres
+    environment:
+      - DB_DATABASE=${POSTGRES_DB}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "3"
+    ports:
+      - "8080:8080"
+      - "8181:8181"
+      - "4848:4848"
+    restart: unless-stopped
+
+  nginx:
+    container_name: nginx
+    build:
+      dockerfile: Dockerfile
+      context: nginx-le
+    depends_on:
+      - appserver
+    volumes:
+      - nginx-letsencrypt:/etc/letsencrypt
+    environment:
+      - APPSERVER_HOST=appserver
+      - APPSERVER_PORT=8080
+      - DOMAIN
+      - LE_EMAIL
+      - LE_OPTIONS
+      - LE_RENEW_OPTIONS
+      - LE_RENEW_CRON_COMMAND
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "3"
+    ports:
+      - "80"
+      - "443"
+    restart: unless-stopped
